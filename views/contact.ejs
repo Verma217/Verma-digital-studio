@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Contact Us | Wedding Photo Selection</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-rose-50 min-h-screen flex items-center justify-center px-4">
+    <div class="w-full max-w-md bg-white p-6 rounded-xl shadow-lg space-y-6">
+
+      <h2 class="text-2xl font-bold text-rose-600 text-center">📩 Contact Us</h2>
+
+      <% if (message) { %>
+        <p class="text-green-600 text-sm text-center"><%= message %></p>
+      <% } %>
+
+      <!-- Simple form posts to /contact -->
+      <form method="POST" action="/contact" class="space-y-4">
+        <input name="name" required placeholder="Your Name"
+               class="w-full p-2 border border-gray-300 rounded" />
+        <input name="email" type="email" required placeholder="Your Email"
+               class="w-full p-2 border border-gray-300 rounded" />
+        <textarea name="message" rows="4" required placeholder="Your Message"
+                  class="w-full p-2 border border-gray-300 rounded"></textarea>
+
+        <button class="w-full bg-rose-500 hover:bg-rose-600 text-white py-2 rounded">
+          Send Message
+        </button>
+      </form>
+
+      <hr class="border-rose-200">
+
+      <!-- Direct contact options -->
+      <div class="space-y-3 text-center">
+        <p class="text-sm text-gray-600">Or reach us directly:</p>
+
+        <!-- WhatsApp button -->
+        <a href="https://wa.me/919694438936?text=Hi%20there!%20I%20have%20a%20question%20about%20my%20photos"
+           target="_blank"
+           class="inline-flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded shadow">
+          <span>💬 WhatsApp Chat</span>
+        </a>
+
+        <!-- Email link -->
+        <a href="mailto:vermarmadigitalstudiomandrella@gmail.com"
+           class="block text-rose-600 underline text-sm">
+          vermarmadigitalstudiomandrella@gmail.com
+        </a>
+      </div>
+
+      <div class="text-center pt-4">
+        <a href="/" class="text-sm underline text-rose-500">← Back to Home</a>
+      </div>
+    </div>
+  </body>
+</html>

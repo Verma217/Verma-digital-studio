@@ -1,0 +1,7 @@
+
+/* fallback style.css if Tailwind CDN is used in all HTML files */
+body {
+  font-family: system-ui, sans-serif;
+  margin: 0;
+  background: #fff0f5;
+}

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title><%= project.name %> | Upload</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-rose-50 min-h-screen p-6">
+  <!-- Top‑nav -->
+  <nav class="flex justify-between items-center mb-6 max-w-5xl mx-auto">
+    <a href="/" class="text-sm underline text-rose-600">🏠 Home</a>
+    <span class="text-xs text-gray-500">Status: <%= project.status %></span>
+  </nav>
+
+  <div class="max-w-5xl mx-auto space-y-10">
+    <!-- Project title + actions -->
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <h2 class="text-3xl font-bold text-rose-600"><%= project.name %></h2>
+
+      <!-- status‑dropdown -->
+      <form action="/project/<%= projectId %>/update-status" method="POST" class="flex items-center gap-2">
+        <select name="status" class="border rounded p-1 text-sm">
+          <option <%= project.status==='New'?'selected':'' %>>New</option>
+          <option value="Under Selection" <%= project.status==='Under Selection'?'selected':'' %>>Under Selection</option>
+          <option value="Completed" <%= project.status==='Completed'?'selected':'' %>>Completed</option>
+        </select>
+        <button class="bg-gray-200 text-xs px-2 py-1 rounded">Save</button>
+      </form>
+
+      <% if (project.status !== 'Completed') { %>
+        <form action="/project/<%= projectId %>/generate-link" method="GET">
+          <button class="bg-gradient-to-r from-rose-400 to-rose-600 text-white px-6 py-2 rounded-md shadow-md">
+            🔗 Generate Client Link
+          </button>
+        </form>
+      <% } else { %>
+        <a href="/project/<%= projectId %>/download-bat"
+           class="bg-green-500 hover:bg-green-600 text-white px-6 py-2 rounded-md shadow-md">
+          ⬇ Download .bat
+        </a>
+      <% } %>
+    </div>
+
+    <% if (project.token && project.status !== 'Completed') { %>
+      <p class="text-sm text-center text-gray-600">
+        Share this link: 
+        <code class="text-rose-600 font-mono">http://localhost:3000/select/<%= project.token %></code>
+      </p>
+    <% } %>
+
+    <!-- Upload a whole folder -->
+    <div class="bg-white p-6 rounded-xl shadow-md space-y-6">
+      <h3 class="text-xl font-semibold text-gray-700">Add a Folder</h3>
+      <input id="folderPicker" type="file" multiple webkitdirectory directory
+             class="w-full p-3 border border-gray-300 rounded" />
+
+      <!-- live preview + progress -->
+      <div id="previewWrapper" class="hidden flex-col space-y-4">
+        <div id="thumbGrid" class="grid grid-cols-3 sm:grid-cols-4 gap-3"></div>
+        <div class="w-full bg-gray-200 rounded-full h-3">
+          <div id="progressBar" class="bg-rose-500 h-3 rounded-full w-0"></div>
+        </div>
+        <p class="text-sm text-gray-600 text-center">
+          <span id="progressText">0%</span> uploaded
+        </p>
+      </div>
+    </div>
+
+    <!-- Existing previews -->
+    <% if (Object.keys(grouped).length) { %>
+      <div class="bg-white p-6 rounded-xl shadow-md">
+        <h3 class="text-xl font-semibold mb-4 text-gray-700">Existing Low‑res Previews</h3>
+
+        <% Object.keys(grouped).forEach(folder => { %>
+          <section class="mb-10">
+            <div class="flex justify-between items-center mb-2">
+              <h4 class="font-medium text-gray-600"><%= folder %></h4>
+
+              <!-- delete entire folder -->
+              <form action="/project/<%= projectId %>/delete-folder" method="POST"
+                    onsubmit="return confirm('Delete the whole folder?')">
+                <input type="hidden" name="folder" value="<%= folder %>" />
+                <button class="text-red-500 text-sm">🗑 Folder</button>
+              </form>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <% grouped[folder].forEach(img => { %>
+                <div class="relative group">
+                  <img src="/projects/<%= projectId %>/lowres/<%= folder %>/<%= img %>"
+                       class="rounded-lg shadow-sm w-full aspect-square object-cover" />
+
+                  <!-- delete single image -->
+                  <form action="/project/<%= projectId %>/delete-image" method="POST"
+                        onsubmit="return confirm('Delete this photo?')"
+                        class="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition">
+                    <input type="hidden" name="folder" value="<%= folder %>" />
+                    <input type="hidden" name="image"  value="<%= img %>" />
+                    <button class="bg-white/80 backdrop-blur px-1 rounded text-xs">🗑</button>
+                  </form>
+                </div>
+              <% }) %>
+            </div>
+          </section>
+        <% }) %>
+      </div>
+    <% } %>
+  </div>
+
+  <!-- uploader JS -->
+  <script>
+    const picker         = document.getElementById('folderPicker');
+    const thumbGrid      = document.getElementById('thumbGrid');
+    const previewWrapper = document.getElementById('previewWrapper');
+    const pBar           = document.getElementById('progressBar');
+    const pText          = document.getElementById('progressText');
+
+    picker.addEventListener('change', () => {
+      if (!picker.files.length) return;
+
+      const relPath = picker.files[0].webkitRelativePath || picker.files[0].name;
+      const folder  = relPath.split('/')[0];
+      thumbGrid.innerHTML = '';
+      previewWrapper.classList.remove('hidden');
+
+      // thumbnails
+      Array.from(picker.files).forEach(f => {
+        if (!f.type.startsWith('image')) return;
+        const reader = new FileReader();
+        reader.onload = e => {
+          const img = document.createElement('img');
+          img.src   = e.target.result;
+          img.className = 'rounded border w-full aspect-square object-cover shadow';
+          thumbGrid.appendChild(img);
+        };
+        reader.readAsDataURL(f);
+      });
+
+      // upload
+      const fd = new FormData();
+      fd.append('folder', folder);
+      Array.from(picker.files).forEach(f => fd.append('photos', f, f.name));
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `/project/<%= projectId %>/upload-one`);
+      xhr.upload.onprogress = e => {
+        if (e.lengthComputable) {
+          const percent = Math.round((e.loaded / e.total) * 100);
+          pBar.style.width = percent + '%';
+          pText.textContent = percent + '% uploaded';
+        }
+      };
+      xhr.onload = () => {
+        if (xhr.status === 200) {
+          pText.textContent = 'Upload complete! Reloading…';
+          setTimeout(() => location.reload(), 1200);
+        } else {
+          pText.textContent = 'Upload failed';
+        }
+      };
+      xhr.send(fd);
+    });
+  </script>
+</body>
+</html>

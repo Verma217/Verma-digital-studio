@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Gallery | Verma Digital Studio</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-rose-50 min-h-screen p-6">
+  <div class="max-w-5xl mx-auto">
+    <h1 class="text-3xl font-bold text-center text-rose-600 mb-6">Gallery</h1>
+    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+      <% images.forEach(img => { %>
+        <img src="/static/gallery/<%= img %>" alt="<%= img %>" class="rounded-lg shadow-md object-cover w-full aspect-square">
+      <% }) %>
+    </div>
+    <div class="text-center mt-6">
+      <a href="/" class="text-rose-600 underline">← Back to Dashboard</a>
+    </div>
+  </div>
+</body>
+</html>
