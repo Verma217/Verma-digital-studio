@@ -110,6 +110,8 @@ app.post("/create-project", isAuth, (req, res) => {
 
 app.post("/project/:projectId/delete", isAuth, (req, res) => {
   const { projectId } = req.params;
+  const project = db.prepare("SELECT * FROM projects WHERE id=?").get(projectId);
+  if (!project || project.userId !== req.session.user.id) return res.status(403).send("Access denied");
   db.prepare("DELETE FROM projects WHERE id=?").run(projectId);
   const dir = path.join("projects", projectId);
   if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
@@ -118,7 +120,7 @@ app.post("/project/:projectId/delete", isAuth, (req, res) => {
 
 app.get("/project/:projectId", isAuth, (req, res) => {
   const project = db.prepare("SELECT * FROM projects WHERE id=?").get(req.params.projectId);
-  if (!project) return res.status(404).send("Project not found");
+  if (!project || project.userId !== req.session.user.id) return res.status(403).send("Access denied");
   const grouped = {};
   const base = path.join("projects", project.id, "lowres");
   if (fs.existsSync(base)) {
@@ -143,6 +145,8 @@ app.post("/project/:projectId/upload-one", isAuth, upload.array("photos", 500), 
 });
 
 app.get("/project/:projectId/generate-link", isAuth, (req, res) => {
+  const project = db.prepare("SELECT * FROM projects WHERE id=?").get(req.params.projectId);
+  if (!project || project.userId !== req.session.user.id) return res.status(403).send("Access denied");
   const token = uuidv4();
   db.prepare("UPDATE projects SET status=?, token=? WHERE id=?").run("Under Selection", token, req.params.projectId);
   const clientLink = `https://verma-digital-studio.onrender.com/select/${token}`;
@@ -170,7 +174,7 @@ app.post("/select/:token/submit", (req, res) => {
 
 app.get("/project/:projectId/download-bat", isAuth, (req, res) => {
   const project = db.prepare("SELECT * FROM projects WHERE id=?").get(req.params.projectId);
-  if (!project) return res.status(404).send("Project not found");
+  if (!project || project.userId !== req.session.user.id) return res.status(403).send("Access denied");
   const selected = JSON.parse(project.selected || "[]");
   const lines = [
     `@echo off`,
