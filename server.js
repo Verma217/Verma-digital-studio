@@ -22,19 +22,18 @@ app.use(
   })
 );
 
-// Static folders
 app.use("/static", express.static("public"));
 app.use("/projects", express.static("projects"));
 
-// Helpers
 function isAuth(req, res, next) {
   if (req.session.user) return next();
   res.redirect("/login");
 }
+
 const upload = multer({ storage: multer.memoryStorage() });
 
-/* Public Pages */
 app.get("/about", (_req, res) => res.render("about"));
+
 app.get("/gallery", (_req, res) => {
   const folder = "public/gallery";
   const images = fs.existsSync(folder)
@@ -42,36 +41,40 @@ app.get("/gallery", (_req, res) => {
     : [];
   res.render("gallery", { images });
 });
+
 app.get("/contact", (_req, res) => res.render("contact", { message: null }));
+
 app.post("/contact", (req, res) => {
   const { name, email, message } = req.body;
   console.log("Contact form ->", { name, email, message });
   res.render("contact", { message: "Thank you! We’ll get back to you soon." });
 });
 
-/* Auth */
 app.get("/signup", (req, res) => res.render("signup", { err: null }));
+
 app.post("/signup", (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.render("signup", { err: "All fields required" });
   if (!createUser(email, password)) return res.render("signup", { err: "Email already exists" });
   req.session.user = { email };
-  res.redirect("/");
+  res.redirect("/dashboard");
 });
+
 app.get("/login", (req, res) => res.render("login", { err: null }));
+
 app.post("/login", (req, res) => {
   const { email, password } = req.body;
   const user = getUserByEmail(email);
   if (user && bcrypt.compareSync(password, user.passwordHash)) {
     req.session.user = { id: user.id, email: user.email };
-    return res.redirect("/");
+    return res.redirect("/dashboard");
   }
   res.render("login", { err: "Invalid credentials" });
 });
+
 app.get("/logout", (req, res) => req.session.destroy(() => res.redirect("/login")));
 
-/* Dashboard */
-app.get("/", isAuth, (req, res) => {
+app.get("/dashboard", isAuth, (req, res) => {
   const projects = db.prepare("SELECT * FROM projects ORDER BY rowid DESC").all();
   const enriched = projects.map(p => {
     const base = path.join("projects", p.id, "lowres");
@@ -95,20 +98,21 @@ app.get("/", isAuth, (req, res) => {
   res.render("welcome", { user: req.session.user, projects: enriched });
 });
 
-/* Project CRUD */
 app.post("/create-project", isAuth, (req, res) => {
   const id = uuidv4();
   db.prepare("INSERT INTO projects(id,name,status,token,selected) VALUES(?,?,?,?,?)")
     .run(id, req.body.projectName.trim(), "New", null, JSON.stringify([]));
   res.redirect(`/project/${id}`);
 });
+
 app.post("/project/:projectId/delete", isAuth, (req, res) => {
   const { projectId } = req.params;
   db.prepare("DELETE FROM projects WHERE id=?").run(projectId);
   const dir = path.join("projects", projectId);
   if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
-  res.redirect("/");
+  res.redirect("/dashboard");
 });
+
 app.get("/project/:projectId", isAuth, (req, res) => {
   const project = db.prepare("SELECT * FROM projects WHERE id=?").get(req.params.projectId);
   if (!project) return res.status(404).send("Project not found");
@@ -120,20 +124,24 @@ app.get("/project/:projectId", isAuth, (req, res) => {
   }
   res.render("project", { projectId: project.id, project, grouped });
 });
+
 app.post("/project/:projectId/update-status", isAuth, (req, res) => {
   db.prepare("UPDATE projects SET status=? WHERE id=?").run(req.body.status, req.params.projectId);
   res.redirect(`/project/${req.params.projectId}`);
 });
+
 app.post("/project/:projectId/delete-folder", isAuth, (req, res) => {
   const dir = path.join("projects", req.params.projectId, "lowres", req.body.folder);
   if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
   res.redirect(`/project/${req.params.projectId}`);
 });
+
 app.post("/project/:projectId/delete-image", isAuth, (req, res) => {
   const img = path.join("projects", req.params.projectId, "lowres", req.body.folder, req.body.image);
   if (fs.existsSync(img)) fs.unlinkSync(img);
   res.redirect(`/project/${req.params.projectId}`);
 });
+
 app.post("/project/:projectId/upload-one", isAuth, upload.array("photos", 500), async (req, res) => {
   const base = path.join("projects", req.params.projectId, "lowres", req.body.folder || "misc");
   fs.mkdirSync(base, { recursive: true });
@@ -148,7 +156,6 @@ app.post("/project/:projectId/upload-one", isAuth, upload.array("photos", 500), 
   }
 });
 
-/* Generate Client Link */
 app.get("/project/:projectId/generate-link", isAuth, (req, res) => {
   const token = uuidv4();
   db.prepare("UPDATE projects SET status=?, token=? WHERE id=?").run("Under Selection", token, req.params.projectId);
@@ -157,7 +164,6 @@ app.get("/project/:projectId/generate-link", isAuth, (req, res) => {
   res.render("link-generated", { clientLink });
 });
 
-/* Client Selection */
 app.get("/select/:token", (req, res) => {
   const project = db.prepare("SELECT * FROM projects WHERE token=?").get(req.params.token);
   if (!project) return res.status(404).send("Invalid link");
@@ -169,6 +175,7 @@ app.get("/select/:token", (req, res) => {
 
   res.render("client", { token: req.params.token, projectId: project.id, grouped });
 });
+
 app.post("/select/:token/submit", (req, res) => {
   const project = db.prepare("SELECT * FROM projects WHERE token=?").get(req.params.token);
   if (!project) return res.status(404).send("Invalid token");
@@ -178,7 +185,6 @@ app.post("/select/:token/submit", (req, res) => {
   res.render("thankyou");
 });
 
-/* .BAT download */
 app.get("/project/:projectId/download-bat", isAuth, (req, res) => {
   const project = db.prepare("SELECT * FROM projects WHERE id=?").get(req.params.projectId);
   if (!project) return res.status(404).send("Project not found");
@@ -194,6 +200,5 @@ app.get("/project/:projectId/download-bat", isAuth, (req, res) => {
   res.type("bat").send(lines.join("\r\n"));
 });
 
-/* Start */
-app.listen(3000, () => console.log("✓ Server running on http://localhost:3000"));
-
+// Only export if running in a module system
+export default app;
