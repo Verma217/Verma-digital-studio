@@ -20,7 +20,7 @@ db.exec(`
     status TEXT,
     token TEXT,
     selected TEXT,
-    ownerId TEXT
+    userId TEXT
   );
 `);
 
