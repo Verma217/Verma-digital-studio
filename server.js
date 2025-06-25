@@ -54,9 +54,13 @@ app.get("/signup", (req, res) => res.render("signup", { err: null }));
 
 app.post("/signup", (req, res) => {
   const { email, password } = req.body;
-  if (!email || !password) return res.render("signup", { err: "All fields required" });
-  if (!createUser(email, password)) return res.render("signup", { err: "Email already exists" });
-  const user = getUserByEmail(email);
+  if (!email || !password)
+    return res.render("signup", { err: "All fields required" });
+
+  const user = createUser(email, password);
+  if (!user)
+    return res.render("signup", { err: "Email already exists" });
+
   req.session.user = { id: user.id, email: user.email };
   res.redirect("/dashboard");
 });
@@ -77,7 +81,10 @@ app.get("/logout", (req, res) => req.session.destroy(() => res.redirect("/login"
 
 app.get("/dashboard", isAuth, (req, res) => {
   const userId = req.session.user.id;
-  const projects = db.prepare("SELECT * FROM projects WHERE userId = ? ORDER BY rowid DESC").all(userId);
+  const projects = db
+    .prepare("SELECT * FROM projects WHERE userId = ? ORDER BY rowid DESC")
+    .all(userId);
+
   const enriched = projects.map(p => {
     const base = path.join("projects", p.id, "lowres");
     let photoCount = 0;
