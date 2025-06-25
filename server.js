@@ -56,7 +56,8 @@ app.post("/signup", (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.render("signup", { err: "All fields required" });
   if (!createUser(email, password)) return res.render("signup", { err: "Email already exists" });
-  req.session.user = { email };
+  const user = getUserByEmail(email);
+  req.session.user = { id: user.id, email: user.email };
   res.redirect("/dashboard");
 });
 
@@ -75,7 +76,8 @@ app.post("/login", (req, res) => {
 app.get("/logout", (req, res) => req.session.destroy(() => res.redirect("/login")));
 
 app.get("/dashboard", isAuth, (req, res) => {
-  const projects = db.prepare("SELECT * FROM projects ORDER BY rowid DESC").all();
+  const userId = req.session.user.id;
+  const projects = db.prepare("SELECT * FROM projects WHERE userId = ? ORDER BY rowid DESC").all(userId);
   const enriched = projects.map(p => {
     const base = path.join("projects", p.id, "lowres");
     let photoCount = 0;
@@ -100,8 +102,9 @@ app.get("/dashboard", isAuth, (req, res) => {
 
 app.post("/create-project", isAuth, (req, res) => {
   const id = uuidv4();
-  db.prepare("INSERT INTO projects(id,name,status,token,selected) VALUES(?,?,?,?,?)")
-    .run(id, req.body.projectName.trim(), "New", null, JSON.stringify([]));
+  const userId = req.session.user.id;
+  db.prepare("INSERT INTO projects(id, name, status, token, selected, userId) VALUES(?, ?, ?, ?, ?, ?)")
+    .run(id, req.body.projectName.trim(), "New", null, JSON.stringify([]), userId);
   res.redirect(`/project/${id}`);
 });
 
@@ -125,23 +128,6 @@ app.get("/project/:projectId", isAuth, (req, res) => {
   res.render("project", { projectId: project.id, project, grouped });
 });
 
-app.post("/project/:projectId/update-status", isAuth, (req, res) => {
-  db.prepare("UPDATE projects SET status=? WHERE id=?").run(req.body.status, req.params.projectId);
-  res.redirect(`/project/${req.params.projectId}`);
-});
-
-app.post("/project/:projectId/delete-folder", isAuth, (req, res) => {
-  const dir = path.join("projects", req.params.projectId, "lowres", req.body.folder);
-  if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
-  res.redirect(`/project/${req.params.projectId}`);
-});
-
-app.post("/project/:projectId/delete-image", isAuth, (req, res) => {
-  const img = path.join("projects", req.params.projectId, "lowres", req.body.folder, req.body.image);
-  if (fs.existsSync(img)) fs.unlinkSync(img);
-  res.redirect(`/project/${req.params.projectId}`);
-});
-
 app.post("/project/:projectId/upload-one", isAuth, upload.array("photos", 500), async (req, res) => {
   const base = path.join("projects", req.params.projectId, "lowres", req.body.folder || "misc");
   fs.mkdirSync(base, { recursive: true });
@@ -159,7 +145,6 @@ app.post("/project/:projectId/upload-one", isAuth, upload.array("photos", 500), 
 app.get("/project/:projectId/generate-link", isAuth, (req, res) => {
   const token = uuidv4();
   db.prepare("UPDATE projects SET status=?, token=? WHERE id=?").run("Under Selection", token, req.params.projectId);
-
   const clientLink = `https://verma-digital-studio.onrender.com/select/${token}`;
   res.render("link-generated", { clientLink });
 });
@@ -167,12 +152,10 @@ app.get("/project/:projectId/generate-link", isAuth, (req, res) => {
 app.get("/select/:token", (req, res) => {
   const project = db.prepare("SELECT * FROM projects WHERE token=?").get(req.params.token);
   if (!project) return res.status(404).send("Invalid link");
-
   const grouped = {};
   const base = path.join("projects", project.id, "lowres");
   fs.readdirSync(base).filter(f => fs.statSync(path.join(base, f)).isDirectory())
     .forEach(folder => { grouped[folder] = fs.readdirSync(path.join(base, folder)); });
-
   res.render("client", { token: req.params.token, projectId: project.id, grouped });
 });
 
@@ -189,16 +172,22 @@ app.get("/project/:projectId/download-bat", isAuth, (req, res) => {
   const project = db.prepare("SELECT * FROM projects WHERE id=?").get(req.params.projectId);
   if (!project) return res.status(404).send("Project not found");
   const selected = JSON.parse(project.selected || "[]");
-  const lines = ["@echo off", "mkdir SELECTED"];
-  selected.forEach(f => {
-    const winPath = f.replace(/\//g, "\\");
+  const lines = [
+    `@echo off`,
+    `echo Copying selected files...`,
+    `mkdir SELECTED`
+  ];
+  selected.forEach(relPath => {
+    const winPath = relPath.replace(/\//g, "\\");
     const dir = path.dirname(winPath);
-    if (dir !== ".") lines.push(`if not exist "SELECTED\\${dir}" mkdir "SELECTED\\${dir}"`);
+    if (dir !== ".") {
+      lines.push(`if not exist "SELECTED\\${dir}" mkdir "SELECTED\\${dir}"`);
+    }
     lines.push(`if exist "%~dp0${winPath}" copy /y "%~dp0${winPath}" "SELECTED\\${winPath}"`);
   });
-  res.setHeader("Content-Disposition", `attachment; filename=${project.name.replace(/\s+/g, "_")}_selection.bat`);
+  lines.push(`echo Done!`);
+  res.setHeader("Content-Disposition", `attachment; filename="${project.name.replace(/\s+/g, "_")}_selection.bat"`);
   res.type("bat").send(lines.join("\r\n"));
 });
 
-// Only export if running in a module system
 export default app;
