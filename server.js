@@ -129,11 +129,24 @@ app.get("/project/:projectId", isAuth, (req, res) => {
 });
 
 app.post("/project/:projectId/upload-one", isAuth, upload.array("photos", 500), async (req, res) => {
-  const base = path.join("projects", req.params.projectId, "lowres", req.body.folder || "misc");
+  const { projectId } = req.params;
+  const folder = req.body.folder?.trim() || "misc";
+
+  // ✅ Secure check: Project must belong to logged-in user
+  const project = db.prepare("SELECT * FROM projects WHERE id=?").get(projectId);
+  if (!project || project.userId !== req.session.user.id) {
+    return res.status(403).send("Access denied");
+  }
+
+  const base = path.join("projects", projectId, "lowres", folder);
   fs.mkdirSync(base, { recursive: true });
+
   try {
     for (const file of req.files) {
-      await sharp(file.buffer).resize({ width: 1200 }).jpeg({ quality: 70 }).toFile(path.join(base, file.originalname));
+      await sharp(file.buffer)
+        .resize({ width: 1200 })
+        .jpeg({ quality: 70 })
+        .toFile(path.join(base, file.originalname));
     }
     res.json({ success: true });
   } catch (err) {
