@@ -1,5 +1,11 @@
+// Final working code with:
+// - Fixed session store using connect-sqlite3
+// - Port binding for Render
+// - Upload-one secure check
+
 import express from "express";
 import session from "express-session";
+import SQLiteStore from "connect-sqlite3";
 import bcrypt from "bcrypt";
 import multer from "multer";
 import sharp from "sharp";
@@ -17,6 +23,7 @@ app.use(express.json());
 
 app.use(
   session({
+    store: new (SQLiteStore(session))({ db: "sessions.sqlite", dir: "./" }),
     secret: "wedding-secret",
     resave: false,
     saveUninitialized: false,
@@ -37,14 +44,12 @@ app.get("/signup", (req, res) => res.render("signup", { err: null }));
 
 app.post("/signup", (req, res) => {
   const { email, password } = req.body;
-  if (!email || !password)
-    return res.render("signup", { err: "All fields required" });
+  if (!email || !password) return res.render("signup", { err: "All fields required" });
 
   const created = createUser(email, password);
-  if (!created)
-    return res.render("signup", { err: "Email already exists" });
+  if (!created) return res.render("signup", { err: "Email already exists" });
 
-  const user = getUserByEmail(email); // ✅ correct user.id
+  const user = getUserByEmail(email);
   req.session.user = { id: user.id, email: user.email };
   res.redirect("/dashboard");
 });
@@ -61,15 +66,11 @@ app.post("/login", (req, res) => {
   res.render("login", { err: "Invalid credentials" });
 });
 
-app.get("/logout", (req, res) =>
-  req.session.destroy(() => res.redirect("/login"))
-);
+app.get("/logout", (req, res) => req.session.destroy(() => res.redirect("/login")));
 
 app.get("/dashboard", isAuth, (req, res) => {
   const userId = req.session.user.id;
-  const projects = db
-    .prepare("SELECT * FROM projects WHERE userId = ? ORDER BY rowid DESC")
-    .all(userId);
+  const projects = db.prepare("SELECT * FROM projects WHERE userId = ? ORDER BY rowid DESC").all(userId);
 
   const enriched = projects.map((p) => {
     const base = path.join("projects", p.id, "lowres");
@@ -77,20 +78,15 @@ app.get("/dashboard", isAuth, (req, res) => {
     let coverImage = null;
 
     if (fs.existsSync(base)) {
-      const folders = fs
-        .readdirSync(base)
-        .filter((f) => fs.statSync(path.join(base, f)).isDirectory());
+      const folders = fs.readdirSync(base).filter((f) => fs.statSync(path.join(base, f)).isDirectory());
       for (const folder of folders) {
-        const imgs = fs
-          .readdirSync(path.join(base, folder))
-          .filter((f) => /\.(jpe?g|png)$/i.test(f));
+        const imgs = fs.readdirSync(path.join(base, folder)).filter((f) => /\.(jpe?g|png)$/i.test(f));
         photoCount += imgs.length;
         if (!coverImage && imgs.length) {
           coverImage = `/projects/${p.id}/lowres/${folder}/${imgs[0]}`;
         }
       }
     }
-
     return { ...p, photoCount, coverImage };
   });
 
@@ -100,9 +96,8 @@ app.get("/dashboard", isAuth, (req, res) => {
 app.post("/create-project", isAuth, (req, res) => {
   const id = uuidv4();
   const userId = req.session.user.id;
-  db.prepare(
-    "INSERT INTO projects(id, name, status, token, selected, userId) VALUES(?, ?, ?, ?, ?, ?)"
-  ).run(id, req.body.projectName.trim(), "New", null, JSON.stringify([]), userId);
+  db.prepare("INSERT INTO projects(id, name, status, token, selected, userId) VALUES(?, ?, ?, ?, ?, ?)")
+    .run(id, req.body.projectName.trim(), "New", null, JSON.stringify([]), userId);
   res.redirect(`/project/${id}`);
 });
 
@@ -132,11 +127,8 @@ app.post("/project/:projectId/upload-one", isAuth, upload.array("photos", 500), 
   const { projectId } = req.params;
   const folder = req.body.folder?.trim() || "misc";
 
-  // ✅ Secure check: Project must belong to logged-in user
   const project = db.prepare("SELECT * FROM projects WHERE id=?").get(projectId);
-  if (!project || project.userId !== req.session.user.id) {
-    return res.status(403).send("Access denied");
-  }
+  if (!project || project.userId !== req.session.user.id) return res.status(403).send("Access denied");
 
   const base = path.join("projects", projectId, "lowres", folder);
   fs.mkdirSync(base, { recursive: true });
@@ -159,7 +151,8 @@ app.get("/project/:projectId/generate-link", isAuth, (req, res) => {
   const project = db.prepare("SELECT * FROM projects WHERE id=?").get(req.params.projectId);
   if (!project || project.userId !== req.session.user.id) return res.status(403).send("Access denied");
   const token = uuidv4();
-  db.prepare("UPDATE projects SET status=?, token=? WHERE id=?").run("Under Selection", token, req.params.projectId);
+  db.prepare("UPDATE projects SET status=?, token=? WHERE id=?")
+    .run("Under Selection", token, req.params.projectId);
   const clientLink = `https://verma-digital-studio.onrender.com/select/${token}`;
   res.render("link-generated", { clientLink });
 });
@@ -203,6 +196,12 @@ app.get("/project/:projectId/download-bat", isAuth, (req, res) => {
   lines.push(`echo Done!`);
   res.setHeader("Content-Disposition", `attachment; filename="${project.name.replace(/\s+/g, "_")}_selection.bat"`);
   res.type("bat").send(lines.join("\r\n"));
+});
+
+// 🔊 REQUIRED FOR RENDER: Bind to PORT
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`\u2705 Server running at http://localhost:${PORT}`);
 });
 
 export default app;
