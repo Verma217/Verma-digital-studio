@@ -2,6 +2,7 @@
 // - Fixed session store using connect-sqlite3
 // - Port binding for Render
 // - Upload-one secure check
+// - ✅ Added "/" (home) route to fix "Cannot GET /" issue on Render
 
 import express from "express";
 import session from "express-session";
@@ -32,6 +33,15 @@ app.use(
 
 app.use("/static", express.static("public"));
 app.use("/projects", express.static("projects"));
+
+// ✅ Fix for Render: Home route
+app.get("/", (req, res) => {
+  if (req.session.user) {
+    res.redirect("/dashboard");
+  } else {
+    res.redirect("/login");
+  }
+});
 
 function isAuth(req, res, next) {
   if (req.session.user) return next();
